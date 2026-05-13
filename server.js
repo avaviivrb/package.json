@@ -1,19 +1,8 @@
-const express = require('express');
 const { Client, GatewayIntentBits } = require('discord.js');
+const express = require('express');
 const app = express();
-app.use(express.json());
 
-// CONFIGURAÇÕES VIA VARIÁVEIS DE AMBIENTE (SEGURO)
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN; 
-const CHANNEL_ID = "1502418752946573362"; 
-
-let currentHit = {
-    jobId: null,
-    victimNick: null,
-    placeId: 142823291
-};
-
-// --- LÓGICA DO BOT DO DISCORD ---
+// Configuração do Bot do Discord
 const client = new Client({ 
     intents: [
         GatewayIntentBits.Guilds, 
@@ -22,30 +11,54 @@ const client = new Client({
     ] 
 });
 
-client.on('messageCreate', async (message) => {
-    // Filtra canal e ignora bots
-    if (message.channel.id !== CHANNEL_ID || message.author.bot) return;
+// Variável global para guardar o último JobId recebido
+let lastJobId = "Nenhum ID recebido ainda";
 
-    const content = message.content;
-    const jobIdMatch = content.match(/[a-f0-9-]{30,}/);
-    const nickMatch = content.match(/(?:Victim|User|Nick):\s*(\w+)/i) || content.match(/(\w+)/);
+// Puxa o Token das variáveis de ambiente do Render
+const TOKEN = process.env.DISCORD_TOKEN;
 
-    if (jobIdMatch) {
-        currentHit.jobId = jobIdMatch[0];
-        currentHit.victimNick = (nickMatch && nickMatch[1]) ? nickMatch[1] : "Alvo_Detectado";
-        console.log(`[PONTE] Novo alvo capturado: ${currentHit.victimNick}`);
+// Verifica se o Token existe antes de tentar ligar
+if (!TOKEN) {
+    console.error("Erro ao logar: Token inválido ou faltando nas Environment Variables!");
+    process.exit(1);
+}
+
+// Evento quando o bot liga
+client.on('ready', () => {
+    console.log(`Bot logado como ${client.user.tag}!`);
+});
+
+// Evento para ler mensagens no canal
+client.on('messageCreate', (message) => {
+    // Ignora mensagens do próprio bot
+    if (message.author.bot) return;
+
+    // Se a mensagem for um JobId (ex: apenas números e letras)
+    // Você pode ajustar essa lógica se quiser um comando específico
+    if (message.content.length > 20) { 
+        lastJobId = message.content;
+        console.log(`Novo JobId capturado: ${lastJobId}`);
     }
 });
 
-client.login(DISCORD_TOKEN).catch(err => console.error("Erro ao logar: Token inválido ou faltando!"));
-
-// --- ROTAS DA API ---
-app.get('/', (req, res) => res.send("Ponte Online e Segura!"));
-app.get('/api/next', (req, res) => res.json(currentHit));
-app.get('/api/clear', (req, res) => {
-    currentHit = { jobId: null, victimNick: null, placeId: 142823291 };
-    res.send("Resetado.");
+// ROTA QUE O ROBLOX VAI ACESSAR
+// O Roblox deve fazer um Get para: https://seu-link.onrender.com/api/next
+app.get('/api/next', (req, res) => {
+    res.send(lastJobId);
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor na porta ${PORT}`));
+// Rota inicial apenas para teste no navegador
+app.get('/', (req, res) => {
+    res.send("Servidor da Ponte está Online!");
+});
+
+// Tenta logar no Discord
+client.login(TOKEN).catch(err => {
+    console.error("Falha crítica no login do Discord:", err.message);
+});
+
+// Porta 10000 é a padrão exigida pelo Render
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+    console.log(`Servidor rodando na porta ${PORT}`);
+});
