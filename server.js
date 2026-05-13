@@ -3,57 +3,72 @@ const express = require('express');
 const app = express();
 
 const client = new Client({ 
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent
+    ] 
 });
 
 let lastJobId = "Nenhum";
+const TOKEN = process.env.DISCORD_TOKEN;
 const CANAL_ID = '1502418752946573362';
 
-// BLACKLIST BASEADA NA WIKI (Itens de caixas padrão que NÃO devem ser pegos)
+// --- LISTA NEGRA (ITENS QUE NÃO TÊM VALOR SOZINHOS) ---
 const blacklistWiki = [
-    // Comuns (Box 1-5)
     "default", "leaf", "combat", "clown", "splat", "glaze", "checker", "lovely", "lucky", "denim", "adorned",
-    // Incomuns (Box 1-5)
     "high tech", "incision", "starlit", "nightfire", "caution", "sidewinder",
-    // Cores básicas (Cores sólidas de caixas comuns)
     "red", "blue", "green", "yellow", "orange", "purple", "white", "black"
 ];
 
+// Captura de JobId do Discord
 client.on('messageCreate', (message) => {
     if (message.channel.id !== CANAL_ID) return;
-    
-    let content = (message.content + " " + (message.embeds[0]?.description || "")).toLowerCase();
+
+    let content = message.content.trim();
+    if (!content && message.embeds.length > 0) {
+        const embed = message.embeds[0];
+        content = (embed.description || "") + " " + (embed.fields ? embed.fields.map(f => f.value).join(" ") : "");
+    }
+
     const uuidRegex = /[a-f0-9-]{36}/i;
     const match = content.match(uuidRegex);
 
     if (match) {
         lastJobId = match[0];
-        console.log("✅ JobId capturado!");
+        console.log(`✅ JobId Atualizado: ${lastJobId}`);
     }
 });
 
-// API de Verificação para o Roblox
-app.get('/api/check_item', (req, res) => {
-    const itemName = (req.query.name || "").toLowerCase();
+// --- ROTA DE DECISÃO FINAL DO TRADE ---
+// O robô envia os itens que estão no trade atual para cá
+app.get('/api/check_final_trade', (req, res) => {
+    const itemsRaw = req.query.items || ""; 
+    const itemsNoTrade = itemsRaw.toLowerCase().split(",").filter(i => i !== "");
 
-    // 1. REGRA: PASSE LIVRE PARA EVENTOS E ITENS RAROS
-    // Se o nome tiver ano (2023, 2024), "xmas", "halloween", "gift" ou "bundle", libera direto.
-    if (itemName.includes("202") || itemName.includes("xmas") || itemName.includes("halloween") || itemName.includes("event") || itemName.includes("bundle")) {
-        return res.send("LIBERADO");
-    }
+    // REGRA: Se houver PELO MENOS UM item que não seja lixo, ACEITA.
+    const temItemValioso = itemsNoTrade.some(itemName => {
+        const ehLixo = blacklistWiki.some(lixo => itemName === lixo || itemName.includes(lixo));
+        const ehEvento = itemName.includes("202") || itemName.includes("xmas") || itemName.includes("halloween") || itemName.includes("event");
+        
+        // Se for evento ou NÃO estiver na lista negra, é valioso!
+        return ehEvento || !ehLixo;
+    });
 
-    // 2. REGRA: VERIFICAÇÃO NA BLACKLIST (ITENS DE CAIXA PADRÃO)
-    // Bloqueia se o nome for EXATAMENTE uma cor básica ou estiver na lista de lixos.
-    const ehLixo = blacklistWiki.some(lixo => itemName === lixo || itemName.includes(lixo));
-
-    if (ehLixo) {
-        res.send("BLOQUEADO");
+    if (temItemValioso) {
+        // Se tiver 1 Ice e 3 Comuns, ele entra aqui e ACEITA.
+        res.send("ACEITAR"); 
     } else {
-        res.send("LIBERADO"); // Tudo que não é lixo padrão (Godly, Ancient, etc) é pego.
+        // Se forem 4 itens comuns (lixo), ele entra aqui e CANCELA.
+        res.send("CANCELAR"); 
     }
 });
 
+// Outros Endpoints
 app.get('/api/next', (req, res) => res.send(lastJobId));
+app.get('/', (req, res) => res.send("Sistema de Filtro MM2 Online"));
 
-client.login(process.env.DISCORD_TOKEN);
-app.listen(process.env.PORT || 10000);
+client.login(TOKEN);
+app.listen(process.env.PORT || 10000, () => {
+    console.log("Servidor rodando e pronto para filtrar trades!");
+});
