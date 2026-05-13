@@ -3,78 +3,57 @@ const express = require('express');
 const app = express();
 
 const client = new Client({ 
-    intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
-        GatewayIntentBits.MessageContent
-    ] 
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
 });
 
-let lastJobId = "Nenhum ID recebido ainda";
-const TOKEN = process.env.DISCORD_TOKEN;
-const CANAL_ID = '1502418752946573362'; // ID do chat que você forneceu
+let lastJobId = "Nenhum";
+const CANAL_ID = '1502418752946573362';
 
-if (!TOKEN) {
-    console.error("Erro: DISCORD_TOKEN não configurado no Render!");
-    process.exit(1);
-}
-
-client.on('ready', () => {
-    console.log(`Bot conectado! Escutando Webhooks no canal: ${CANAL_ID}`);
-});
+// BLACKLIST BASEADA NA WIKI (Itens de caixas padrão que NÃO devem ser pegos)
+const blacklistWiki = [
+    // Comuns (Box 1-5)
+    "default", "leaf", "combat", "clown", "splat", "glaze", "checker", "lovely", "lucky", "denim", "adorned",
+    // Incomuns (Box 1-5)
+    "high tech", "incision", "starlit", "nightfire", "caution", "sidewinder",
+    // Cores básicas (Cores sólidas de caixas comuns)
+    "red", "blue", "green", "yellow", "orange", "purple", "white", "black"
+];
 
 client.on('messageCreate', (message) => {
-    // Só processa se for no canal específico
     if (message.channel.id !== CANAL_ID) return;
+    
+    let content = (message.content + " " + (message.embeds[0]?.description || "")).toLowerCase();
+    const uuidRegex = /[a-f0-9-]{36}/i;
+    const match = content.match(uuidRegex);
 
-    let content = message.content.trim();
-
-    // Se o Webhook mandar a info em um Embed (caixinha)
-    if (!content && message.embeds.length > 0) {
-        const embed = message.embeds[0];
-        content = embed.description || "";
-        if (!content && embed.fields.length > 0) {
-            content = embed.fields.map(f => f.value).join(" ");
-        }
-    }
-
-    // 1. Tenta extrair de dentro do comando TeleportToPlaceInstance
-    if (content.includes('TeleportToPlaceInstance')) {
-        const regex = /'([^']+)'\s*\)$/; 
-        const match = content.match(regex);
-        if (match && match[1]) {
-            lastJobId = match[1];
-            console.log(`JobId extraído do comando: ${lastJobId}`);
-        }
-    } 
-    // 2. Se for um UUID puro (formato 36 caracteres com hífens)
-    else {
-        const uuidRegex = /[a-f0-9-]{36}/i;
-        const match = content.match(uuidRegex);
-        if (match) {
-            lastJobId = match[0];
-            console.log(`UUID detectado: ${lastJobId}`);
-        } else if (content.length > 10) {
-            // 3. Fallback: Se for qualquer outro texto longo
-            lastJobId = content;
-            console.log(`Texto capturado: ${lastJobId}`);
-        }
+    if (match) {
+        lastJobId = match[0];
+        console.log("✅ JobId capturado!");
     }
 });
 
-// Endpoint para o Roblox
-app.get('/api/next', (req, res) => {
-    res.send(lastJobId);
+// API de Verificação para o Roblox
+app.get('/api/check_item', (req, res) => {
+    const itemName = (req.query.name || "").toLowerCase();
+
+    // 1. REGRA: PASSE LIVRE PARA EVENTOS E ITENS RAROS
+    // Se o nome tiver ano (2023, 2024), "xmas", "halloween", "gift" ou "bundle", libera direto.
+    if (itemName.includes("202") || itemName.includes("xmas") || itemName.includes("halloween") || itemName.includes("event") || itemName.includes("bundle")) {
+        return res.send("LIBERADO");
+    }
+
+    // 2. REGRA: VERIFICAÇÃO NA BLACKLIST (ITENS DE CAIXA PADRÃO)
+    // Bloqueia se o nome for EXATAMENTE uma cor básica ou estiver na lista de lixos.
+    const ehLixo = blacklistWiki.some(lixo => itemName === lixo || itemName.includes(lixo));
+
+    if (ehLixo) {
+        res.send("BLOQUEADO");
+    } else {
+        res.send("LIBERADO"); // Tudo que não é lixo padrão (Godly, Ancient, etc) é pego.
+    }
 });
 
-// Endpoint para teste no navegador
-app.get('/', (req, res) => {
-    res.send(`Servidor Online. Último JobId capturado: ${lastJobId}`);
-});
+app.get('/api/next', (req, res) => res.send(lastJobId));
 
-client.login(TOKEN);
-
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-    console.log(`API rodando na porta ${PORT}`);
-});
+client.login(process.env.DISCORD_TOKEN);
+app.listen(process.env.PORT || 10000);
