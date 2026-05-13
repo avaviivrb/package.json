@@ -1,12 +1,12 @@
 {
-  "name": "auto-join-bridge",
+  "name": "auto-join-bot",
   "version": "1.0.0",
   "main": "server.js",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "express": "^4.18.2"
+  },
   "scripts": {
     "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^4.18.2",
-    "discord.js": "^14.11.0"
   }
 }
